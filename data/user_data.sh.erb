@@ -17,8 +17,10 @@ mount -o loop $image $imagedir
 mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak
 cp /etc/resolv.conf $imagedir/etc/
 
-# Upgrade and install packages on the target file system
-chroot $imagedir mount -t proc none /proc
+# Chroot needs these to function properly
+mount -t proc none $imagedir/proc/
+mount -t sysfs none $imagedir/sys/
+mount -o bind /dev $imagedir/dev/
 
 # prevent daemons from starting during apt-get 
 cat <<EOF | tee $imagedir/usr/sbin/policy-rc.d > /dev/null
@@ -61,18 +63,23 @@ fi
 
 while [ ! -e $dev ]; do sleep 1; done
 
+# We need to lazy umount from our chroot environment.
+umount -l $imagedir/sys
+umount -l $imagedir/dev
+umount -l $imagedir/proc
+
 # Format and mount the EBS volume
-yes | sudo mkfs.ext4 -L cloudimg-rootfs $dev
+mkfs.ext4 -L cloudimg-rootfs $dev
 ebsimagedir=$imagedir-ebs
 mkdir $ebsimagedir
 mount $dev $ebsimagedir
 
 # Copy file system from temporary rootdir to EBS volume
-tar -cSf - -C $imagedir . | sudo tar xvf - -C $ebsimagedir
+tar -cpSf - -C $imagedir . | tar pxvf - -C $ebsimagedir
 
 # Unmount 
-umount $imagedir
-umount $ebsimagedir
+umount -l $imagedir
+umount -l $ebsimagedir
 
 # Shutdown to signal success
 shutdown -h now
