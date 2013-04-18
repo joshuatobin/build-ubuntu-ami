@@ -21,11 +21,17 @@ mount -o loop $image $imagedir
 
 # Allow network access from chroot environment
 # cp fails because the symlink reference doesn't exist. Create a backup for now.
-if [ -e $imagedir/etc/resolve.conf ]; then mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak; fi
+# cp fails because the symlink reference doesn't exist. Create a backup for now.                                              
+if [[ ( -L $imagedir/etc/resolv.conf ) && ( ! -e $imagedir/etc/resolv.conf ) ]]; then 
+  mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak; 
+fi
 cp /etc/resolv.conf $imagedir/etc/
+chmod 644 $imagedir/etc/resolv.conf 
 
-# Upgrade and install packages on the target file system
-chroot $imagedir mount -t proc none /proc
+# Chroot needs these to function properly
+mount -t proc none $imagedir/proc/
+mount -t sysfs none $imagedir/sys/
+mount -o bind /dev $imagedir/dev/
 
 # prevent daemons from starting during apt-get 
 cat <<EOF | tee $imagedir/usr/sbin/policy-rc.d > /dev/null
@@ -53,6 +59,8 @@ if [ -e $imagedir/etc/resolve.conf.bak ]; then mv $imagedir/etc/resolv.conf.bak 
 
 # Clean up chroot environment
 chroot $imagedir umount /proc
+chroot $imagedir umount /sys
+chroot $imagedir umount /dev
 
 # Clean up policy-rc.d
 rm -f $imagedir/usr/sbin/policy-rc.d
@@ -69,17 +77,17 @@ fi
 while [ ! -e $dev ]; do sleep 1; done
 
 # Format and mount the EBS volume
-yes | sudo mkfs.ext4 -L cloudimg-rootfs $dev
+mkfs.ext4 -L cloudimg-rootfs $dev
 ebsimagedir=$imagedir-ebs
 mkdir $ebsimagedir
 mount $dev $ebsimagedir
 
 # Copy file system from temporary rootdir to EBS volume
-tar -cSf - -C $imagedir . | sudo tar xvf - -C $ebsimagedir
+tar -cpSf - -C $imagedir . | tar pxvf - -C $ebsimagedir
 
-# Unmount
-umount $imagedir
-umount $ebsimagedir
+# Unmount 
+umount -l $imagedir
+umount -l $ebsimagedir
 
 # Shutdown to signal success
 shutdown -h now
