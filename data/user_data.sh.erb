@@ -4,18 +4,26 @@
 # Log output to the console, syslog, and /var/log/user-data.log
 exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# Download and mount the clean image
+# Download and extract the clean image
 image=/mnt/<%= image_name %>.img
-imagedir=/mnt/<%= image_name %>-cloudimg-<%= arch %>
-wget -qO- <%= image_url %> |
-  tar xzf - -C /mnt
+imagedir=/mnt/<%= image_name %>
+wget -qO- <%= image_url %> | tar xzf - -C /mnt
+
+# The image is 1.4GB by default
+# Add 4GB for good measure
+dd if=/dev/zero bs=1024k count=4096 >> $image
+e2fsck -p -f $image
+resize2fs $image
+
+# Mount the image
 mkdir -p $imagedir
 mount -o loop $image $imagedir
 
 # Allow network access from chroot environment
-# cp fails because the symlink reference doesn't exist. Create a backup for now. 
-mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak
+# cp fails because the symlink reference doesn't exist. Create a backup for now.
+if [ -e $imagedir/etc/resolve.conf ]; then mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak; fi
 cp /etc/resolv.conf $imagedir/etc/
+chmod 644 $imagedir/etc/resolv.conf 
 
 # Chroot needs these to function properly
 mount -t proc none $imagedir/proc/
@@ -44,7 +52,7 @@ chroot $imagedir /tmp/custom_user_script
 
 # Put resolv.conf symlink back in place
 rm -rf  $imagedir/etc/resolve.conf
-mv $imagedir/etc/resolv.conf.bak $imagedir/etc/resolv.conf
+if [ -e $imagedir/etc/resolve.conf.bak ]; then mv $imagedir/etc/resolv.conf.bak $imagedir/etc/resolv.conf; fi
 
 # Clean up chroot environment
 chroot $imagedir umount /proc
