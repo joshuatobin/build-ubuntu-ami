@@ -20,8 +20,9 @@ mkdir -p $imagedir
 mount -o loop $image $imagedir
 
 # Allow network access from chroot environment
-# cp fails because the symlink reference doesn't exist. Create a backup for now.
-# cp fails because the symlink reference doesn't exist. Create a backup for now.                                              
+if [ -e $imagedir/etc/resolve.conf ]; then mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak; fi
+
+# cp fails because the symlink reference doesn't exist. Create a backup for now if we find dangling symlinks
 if [[ ( -L $imagedir/etc/resolv.conf ) && ( ! -e $imagedir/etc/resolv.conf ) ]]; then 
   mv $imagedir/etc/resolv.conf $imagedir/etc/resolv.conf.bak; 
 fi
